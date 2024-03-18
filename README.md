@@ -1,2 +1,2 @@
-# CpFastAccessibility
-用于快速开发无障碍服务的库~
+# wxAccessibility
+微信无障碍开发~

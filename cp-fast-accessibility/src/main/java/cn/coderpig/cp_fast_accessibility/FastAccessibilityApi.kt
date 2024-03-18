@@ -377,3 +377,13 @@ fun AnalyzeSourceResult.findAllTextNode(includeDesc: Boolean = false): AnalyzeSo
     }
     return result
 }
+
+// 下拉刷新操作
+fun performPullToRefresh() {
+    // 模拟滑动开始
+    FastAccessibilityService.require.performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+    Thread.sleep(2000) // 等待通知栏展开
+    FastAccessibilityService.require.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) // 返回到主屏幕
+    Thread.sleep(1000) // 等待返回主屏幕
+    FastAccessibilityService.require.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) // 返回主屏幕后再次确认返回主屏幕
+}
