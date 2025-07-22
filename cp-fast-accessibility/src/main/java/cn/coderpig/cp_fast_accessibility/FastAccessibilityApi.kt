@@ -336,6 +336,21 @@ fun AnalyzeSourceResult.findNodesById(id: String): AnalyzeSourceResult {
 }
 
 /**
+ * 根据id查找结点列表 (模糊匹配)
+ *
+ * @param id 结点id
+ * @param className 节点class
+ * */
+fun AnalyzeSourceResult.findNodesByIdAndClassName(id: String,className: String): NodeWrapper? {
+    nodes.forEach { node ->
+        if (!node.id.isNullOrBlank()) {
+            if (node.id!!.contains(id) and node.className!!.contains(className)) return node
+        }
+    }
+    return null
+}
+
+/**
  * 根据传入的表达式结果查找结点
  *
  * @param expression 匹配条件表达式

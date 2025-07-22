@@ -1,11 +1,20 @@
 package cn.coderpig.cpfastaccessibility
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.view.accessibility.AccessibilityNodeInfo
 import cn.coderpig.cp_fast_accessibility.AnalyzeSourceResult
 import cn.coderpig.cp_fast_accessibility.EventWrapper
 import cn.coderpig.cp_fast_accessibility.FastAccessibilityService
+import cn.coderpig.cp_fast_accessibility.click
+import cn.coderpig.cp_fast_accessibility.findNodeByExpression
+import cn.coderpig.cp_fast_accessibility.findNodeById
+import cn.coderpig.cp_fast_accessibility.findNodesById
+import cn.coderpig.cp_fast_accessibility.findNodesByIdAndClassName
+import cn.coderpig.cp_fast_accessibility.input
+import cn.coderpig.cp_fast_accessibility.sleep
 import java.util.Timer
 import java.util.TimerTask
+
 
 /**
  * Author: 范新旗
@@ -53,16 +62,18 @@ class MyAccessibilityService : FastAccessibilityService() {
     override val enableListenApp = true
 
     override fun analyzeCallBack(wrapper: EventWrapper?, result: AnalyzeSourceResult) {
-        if (wrapper?.packageName == "com.tencent.mm" && wrapper?.className == "com.tencent.mm.plugin.webview.ui.tools.MMWebViewUI") {
-            // 每隔一定时间执行任务
-            // 每隔一定时间执行任务
-            timer!!.schedule(object : TimerTask() {
-                override fun run() {
-                    // 在定时器中执行你的操作
-                    performPullToRefresh()
+        if (wrapper?.packageName == "com.tencent.mm" && wrapper.className=="com.tencent.mm.ui.LauncherUI") {
+            var inputNode = result?.findNodesByIdAndClassName("com.tencent.mm:id/bkk", "android.widget.EditText")
+            if (inputNode !=null) {
+                inputNode.click();
+                sleep(400);
+                inputNode.input("公告，机器人发送");
+                sleep(400);
+                var sentButton=  result?.findNodesByIdAndClassName("com.tencent.mm:id/bql","android.widget.Button");
+                if (sentButton != null) {
+                    sentButton.click(false)
                 }
-            }, 0, 5000) // 每隔5秒执行一次任务，第一次任务延迟0毫秒
-
+            }
         }
     }
 
