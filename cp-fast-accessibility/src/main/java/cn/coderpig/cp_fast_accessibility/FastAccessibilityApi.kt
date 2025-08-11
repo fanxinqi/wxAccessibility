@@ -341,10 +341,46 @@ fun AnalyzeSourceResult.findNodesById(id: String): AnalyzeSourceResult {
  * @param id 结点id
  * @param className 节点class
  * */
-fun AnalyzeSourceResult.findNodesByIdAndClassName(id: String,className: String): NodeWrapper? {
+fun AnalyzeSourceResult.findNodesByIdAndClassName(id: String, className: String): NodeWrapper? {
     nodes.forEach { node ->
         if (!node.id.isNullOrBlank()) {
-            if (node.id!!.contains(id) and node.className!!.contains(className)) return node
+            if (node.id!!.contains(id) && node.className!!.contains(className)) return node
+        }
+    }
+    return null
+}
+
+/**
+ * 根据className查找结点，可指定返回第几个匹配项
+ *
+ * @param className 控件className
+ * @param index 匹配到的第几个结点（从0开始），默认返回第一个
+ * @return 匹配到的结点，未找到返回 null
+ */
+fun AnalyzeSourceResult.findNodeByClassName(className: String, index: Int = 0): NodeWrapper? {
+    var count = 0
+    nodes.forEach { node ->
+        if (!node.className.isNullOrBlank() && node.className == className) {
+            if (count == index) return node
+            count++
+        }
+    }
+    return null
+}
+
+/**
+ * 根据控件文本查找结点（等价于 findNodeByText 的简化版，可指定返回第几个匹配项）
+ *
+ * @param text 控件文本
+ * @param index 匹配到的第几个结点（从0开始），默认返回第一个
+ * @return 匹配到的结点，未找到返回 null
+ */
+fun AnalyzeSourceResult.findNodeByLabel(text: String, index: Int = 0): NodeWrapper? {
+    var count = 0
+    nodes.forEach { node ->
+        if (!node.text.isNullOrBlank() && node.text == text) {
+            if (count == index) return node
+            count++
         }
     }
     return null

@@ -16,6 +16,8 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.TimeUnit
 import android.util.Log
+import cn.coderpig.cp_fast_accessibility.findNodeByClassName
+import cn.coderpig.cp_fast_accessibility.findNodeByLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +55,7 @@ class MyAccessibilityService : FastAccessibilityService() {
 
     private var pollingJob: Job? = null
     private var pendingMessage: String? = null
+    private val weChatSender = WeChatMessageSender() // 使用封装的消息发送器
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -103,32 +106,76 @@ class MyAccessibilityService : FastAccessibilityService() {
     }
 
     override fun analyzeCallBack(wrapper: EventWrapper?, result: AnalyzeSourceResult) {
-        if (wrapper?.packageName == "com.tencent.mm" && wrapper.className == "android.widget.LinearLayout") {
+        // 增加日志记录，便于调试
+        Log.d(TAG, "analyzeCallBack - 包名: ${wrapper?.packageName}, 类名: ${wrapper?.className}")
+        
+        // 处理微信消息发送
+        if (wrapper?.packageName == "com.tencent.mm") {
             pendingMessage?.let { message ->
-                pendingMessage = null
-                sendWeChatMessageAsync(result, message)
+                Log.d(TAG, "检测到微信界面，准备发送消息: $message")
+                // 确保不会重复执行
+                if (!weChatSender.isSending()) {
+                    pendingMessage = null
+                    weChatSender.sendMessage(result, message) { success ->
+                        if (success) {
+                            Log.d(TAG, "消息发送成功回调: $message")
+                        } else {
+                            Log.e(TAG, "消息发送失败回调: $message")
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "消息正在发送中，跳过本次执行")
+                }
+            } ?: run {
+                Log.d(TAG, "没有待发送的消息")
             }
         }
     }
 
-    private fun sendWeChatMessageAsync(result: AnalyzeSourceResult, message: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            val inputNode = result.findNodesByIdAndClassName("com.tencent.mm:id/bkk", "android.widget.EditText")
-            if (inputNode != null) {
-                inputNode.click()
-                delay(400)
-                inputNode.input(message)
-                delay(400)
-            } else {
-                Log.e(TAG, "找不到输入框节点")
-            }
-
-            val sendButton = result.findNodesByIdAndClassName("com.tencent.mm:id/bql", "android.widget.Button")
-            if (sendButton != null) {
-                sendButton?.click(false)
-            }
-
+    /**
+     * 公共接口：供外部调用的原子化消息发送方法
+     * @param message 要发送的消息
+     */
+    fun sendMessageAtomic(message: String) {
+        if (weChatSender.isSending()) {
+            Log.w(TAG, "已有消息正在发送中，忽略本次请求")
+            return
         }
+        
+        // 获取当前的窗口内容
+        val result = weChatSender.getCurrentWindowAnalyzeResult(this)
+        if (result != null) {
+            weChatSender.sendMessage(result, message) { success ->
+                if (success) {
+                    Log.d(TAG, "外部调用发送消息成功: $message")
+                } else {
+                    Log.e(TAG, "外部调用发送消息失败: $message")
+                }
+            }
+        } else {
+            Log.e(TAG, "无法获取当前窗口内容，消息发送失败")
+        }
+    }
+
+    /**
+     * 测试方法：手动触发消息发送
+     * 可以用于调试和测试
+     */
+    fun testSendMessage(testMessage: String = "测试消息") {
+        Log.d(TAG, "手动触发测试消息发送: $testMessage")
+        pendingMessage = testMessage
+        
+        // 强制设置一个测试消息来验证功能
+        if (!weChatSender.isSending()) {
+            Log.d(TAG, "开始测试发送流程")
+        }
+    }
+
+    /**
+     * 调试方法：打印当前窗口所有节点信息
+     */
+    fun debugCurrentWindow() {
+        weChatSender.debugCurrentWindow(this)
     }
 
     override fun onDestroy() {
