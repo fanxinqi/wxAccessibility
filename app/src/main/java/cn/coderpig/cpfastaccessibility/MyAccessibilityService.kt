@@ -56,24 +56,28 @@ class MyAccessibilityService : FastAccessibilityService() {
     private var pollingJob: Job? = null
     private var pendingMessage: String? = null
     private val weChatSender = WeChatMessageSender() // 使用封装的消息发送器
+    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+//        pendingMessage = "测试ai消息原子发送"
         startPolling()
     }
 
     private fun startPolling() {
         pollingJob?.cancel() // 防止重复启动
-        pollingJob = CoroutineScope(Dispatchers.IO).launch {
+        pollingJob = serviceScope.launch {
+            Log.d(TAG, "开始轮询消息")
             while (isActive) {
                 try {
                     checkForNewMessages()
                 } catch (e: Exception) {
-                    Log.e(TAG, "轮询出错: ${e.message}")
+                    Log.e(TAG, "轮询出错: ${e.message}", e)
                 }
                 delay(POLLING_INTERVAL)
             }
         }
+        Log.d(TAG, "轮询任务已启动")
     }
 
     private suspend fun checkForNewMessages() {
@@ -108,28 +112,28 @@ class MyAccessibilityService : FastAccessibilityService() {
     override fun analyzeCallBack(wrapper: EventWrapper?, result: AnalyzeSourceResult) {
         // 增加日志记录，便于调试
         Log.d(TAG, "analyzeCallBack - 包名: ${wrapper?.packageName}, 类名: ${wrapper?.className}")
-        
+
         // 处理微信消息发送
-        if (wrapper?.packageName == "com.tencent.mm") {
-            pendingMessage?.let { message ->
-                Log.d(TAG, "检测到微信界面，准备发送消息: $message")
-                // 确保不会重复执行
-                if (!weChatSender.isSending()) {
-                    pendingMessage = null
-                    weChatSender.sendMessage(result, message) { success ->
-                        if (success) {
-                            Log.d(TAG, "消息发送成功回调: $message")
-                        } else {
-                            Log.e(TAG, "消息发送失败回调: $message")
-                        }
+//        if (wrapper?.packageName == "com.tencent.mm") {
+        pendingMessage?.let { message ->
+            Log.d(TAG, "检测到微信界面，准备发送消息: $message")
+            // 确保不会重复执行
+            if (!weChatSender.isSending()) {
+                pendingMessage = null
+                weChatSender.sendMessage(result, message) { success ->
+                    if (success) {
+                        Log.d(TAG, "消息发送成功回调: $message")
+                    } else {
+                        Log.e(TAG, "消息发送失败回调: $message")
                     }
-                } else {
-                    Log.w(TAG, "消息正在发送中，跳过本次执行")
                 }
-            } ?: run {
-                Log.d(TAG, "没有待发送的消息")
+            } else {
+                Log.w(TAG, "消息正在发送中，跳过本次执行")
             }
+        } ?: run {
+            Log.d(TAG, "没有待发送的消息")
         }
+//        }
     }
 
     /**
@@ -141,7 +145,7 @@ class MyAccessibilityService : FastAccessibilityService() {
             Log.w(TAG, "已有消息正在发送中，忽略本次请求")
             return
         }
-        
+
         // 获取当前的窗口内容
         val result = weChatSender.getCurrentWindowAnalyzeResult(this)
         if (result != null) {
@@ -164,7 +168,7 @@ class MyAccessibilityService : FastAccessibilityService() {
     fun testSendMessage(testMessage: String = "测试消息") {
         Log.d(TAG, "手动触发测试消息发送: $testMessage")
         pendingMessage = testMessage
-        
+
         // 强制设置一个测试消息来验证功能
         if (!weChatSender.isSending()) {
             Log.d(TAG, "开始测试发送流程")
@@ -175,7 +179,7 @@ class MyAccessibilityService : FastAccessibilityService() {
      * 调试方法：打印当前窗口所有节点信息
      */
     fun debugCurrentWindow() {
-        weChatSender.debugCurrentWindow(this)
+        // TODO: Implement debug functionality
     }
 
     override fun onDestroy() {
