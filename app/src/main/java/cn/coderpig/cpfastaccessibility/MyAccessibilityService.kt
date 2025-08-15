@@ -43,7 +43,7 @@ class MyAccessibilityService : FastAccessibilityService() {
 
         data class ApiResponse(
             @SerializedName("status") val status: String?,
-            @SerializedName("data") val data: List<MessageData>?
+            @SerializedName("data") val data: MessageData?
         )
 
         data class MessageData(
@@ -55,13 +55,48 @@ class MyAccessibilityService : FastAccessibilityService() {
 
     private var pollingJob: Job? = null
     private var pendingMessage: String? = null
-    private val weChatSender = WeChatMessageSender() // 使用封装的消息发送器
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    
+    // 状态机实例
+    private lateinit var stateMachine: StateMachine
 
     override fun onServiceConnected() {
         super.onServiceConnected()
 //        pendingMessage = "测试ai消息原子发送"
+        initializeStateMachine()
         startPolling()
+    }
+    
+    /**
+     * 初始化状态机，定义微信发送消息的步骤流程
+     */
+    private fun initializeStateMachine() {
+        // 使用工厂类创建动态消息发送流程
+        val steps = StepFactory.createDynamicWeChatSendFlow("penelop") {
+            "测试" // 返回当前待发送的消息
+        }
+        
+        stateMachine = StateMachine(steps, TAG)
+        Log.d(TAG, "状态机初始化完成，共 ${steps.size} 个步骤")
+    }
+    
+    /**
+     * 触发新的消息发送流程
+     * @param message 要发送的消息
+     * @param contactName 联系人名称，默认为 "penelop"
+     */
+    private fun triggerMessageSend(message: String, contactName: String = "penelop") {
+        pendingMessage = message
+        
+        // 如果状态机已完成或未开始，重置并开始新的流程
+        if (stateMachine.isCompleted() || stateMachine.getCurrentStepIndex() == 0) {
+            // 创建新的发送流程
+            val steps = StepFactory.createDynamicWeChatSendFlow(contactName) {
+                pendingMessage
+            }
+            stateMachine = StateMachine(steps, TAG)
+            Log.d(TAG, "创建新的消息发送流程: $message -> $contactName")
+        }
     }
 
     private fun startPolling() {
@@ -91,14 +126,20 @@ class MyAccessibilityService : FastAccessibilityService() {
             val responseBody = response.body?.string().orEmpty()
             Log.d(TAG, "原始响应: $responseBody")
 
-            val apiResponse = gson.fromJson(responseBody, ApiResponse::class.java)
+            val apiResponse = try {
+                gson.fromJson(responseBody, ApiResponse::class.java)
+            } catch (e: com.google.gson.JsonSyntaxException) {
+                Log.e(TAG, "JSON解析失败: ${e.message}")
+                null
+            }
 
-            if (apiResponse.status == "success" && !apiResponse.data.isNullOrEmpty()) {
-                val messageText = apiResponse.data.firstOrNull()?.text.orEmpty()
+            if (apiResponse?.status == "success" && apiResponse?.data?.text?.isNullOrBlank() == false) {
+                val messageText = apiResponse.data?.text.orEmpty()
                 if (messageText.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
-                        pendingMessage = messageText
                         Log.d(TAG, "成功提取消息: $messageText")
+                        // 触发新的消息发送流程
+                        triggerMessageSend(messageText)
                     }
                 }
             } else {
@@ -110,79 +151,23 @@ class MyAccessibilityService : FastAccessibilityService() {
     }
 
     override fun analyzeCallBack(wrapper: EventWrapper?, result: AnalyzeSourceResult) {
+        // 使用状态机处理事件
+        val stepExecuted = stateMachine.processEvent(wrapper, result)
+        
+        // 记录状态机状态
+        if (stepExecuted) {
+            Log.d(TAG, "步骤执行成功，当前状态: ${stateMachine.getStatus()}")
+        }
+        
+        // 如果状态机已完成，清理当前消息
+        if (stateMachine.isCompleted() && pendingMessage != null) {
+            Log.d(TAG, "消息发送流程完成: $pendingMessage")
+            pendingMessage = null // 清理已发送的消息
+        }
+        
         // 增加日志记录，便于调试
         Log.d(TAG, "analyzeCallBack - 包名: ${wrapper?.packageName}, 类名: ${wrapper?.className}")
-
-        // 处理微信消息发送
-//        if (wrapper?.packageName == "com.tencent.mm") {
-        pendingMessage?.let { message ->
-            Log.d(TAG, "检测到微信界面，准备发送消息: $message")
-            // 确保不会重复执行
-            if (!weChatSender.isSending()) {
-                pendingMessage = null
-                weChatSender.sendMessage(result, message) { success ->
-                    if (success) {
-                        Log.d(TAG, "消息发送成功回调: $message")
-                    } else {
-                        Log.e(TAG, "消息发送失败回调: $message")
-                    }
-                }
-            } else {
-                Log.w(TAG, "消息正在发送中，跳过本次执行")
-            }
-        } ?: run {
-            Log.d(TAG, "没有待发送的消息")
-        }
-//        }
-    }
-
-    /**
-     * 公共接口：供外部调用的原子化消息发送方法
-     * @param message 要发送的消息
-     */
-    fun sendMessageAtomic(message: String) {
-        if (weChatSender.isSending()) {
-            Log.w(TAG, "已有消息正在发送中，忽略本次请求")
-            return
-        }
-
-        // 获取当前的窗口内容
-        val result = weChatSender.getCurrentWindowAnalyzeResult(this)
-        if (result != null) {
-            weChatSender.sendMessage(result, message) { success ->
-                if (success) {
-                    Log.d(TAG, "外部调用发送消息成功: $message")
-                } else {
-                    Log.e(TAG, "外部调用发送消息失败: $message")
-                }
-            }
-        } else {
-            Log.e(TAG, "无法获取当前窗口内容，消息发送失败")
-        }
-    }
-
-    /**
-     * 测试方法：手动触发消息发送
-     * 可以用于调试和测试
-     */
-    fun testSendMessage(testMessage: String = "测试消息") {
-        Log.d(TAG, "手动触发测试消息发送: $testMessage")
-        pendingMessage = testMessage
-
-        // 强制设置一个测试消息来验证功能
-        if (!weChatSender.isSending()) {
-            Log.d(TAG, "开始测试发送流程")
-        }
-    }
-
-    /**
-     * 调试方法：打印当前窗口所有节点信息
-     */
-    fun debugCurrentWindow() {
-        // TODO: Implement debug functionality
-    }
-
-    override fun onDestroy() {
+    }    override fun onDestroy() {
         super.onDestroy()
         pollingJob?.cancel()
         pollingJob = null
